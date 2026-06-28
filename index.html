@@ -507,8 +507,8 @@ const chartDefaults = {
 async function loadAll() {
   try {
     const [lancRows, orcRows] = await Promise.all([
-      fetchSheet('Lançamentos'),
-      fetchSheet('Orçamento')
+      fetchSheet('Lancamentos'),
+      fetchSheet('Orcamento')
     ]);
 
     // ── Parse lançamentos ──
