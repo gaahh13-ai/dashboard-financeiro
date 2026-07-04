@@ -160,27 +160,23 @@ function parseCSV(text){
 // ====== Helpers ======
 function semAcento(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function limpo(s){return String(s==null?'':s).replace(/"/g,'').trim();}
-
-// "R$ 1.234,56" / "R$ -" -> número
 function valorBR(s){
   s=limpo(s).replace(/r\$/i,'').replace(/\s/g,'');
   if(!s||s==='-'||s==='–') return 0;
   s=s.replace(/\./g,'').replace(',','.');
   const n=parseFloat(s); return isNaN(n)?0:n;
 }
-
 const MESES_PT={jan:1,fev:2,mar:3,abr:4,mai:5,jun:6,jul:7,ago:8,set:9,out:10,nov:11,dez:12};
-// aceita "dez/27", "dez./27", "jul/26", "2026-07", "01/07/2026", "01/07/26"
 function parseMes(str){
   let s=semAcento(limpo(str)).toLowerCase().replace(/\./g,'');
   if(!s) return null;
-  let m=s.match(/([a-z]{3})\/?\s*(\d{2,4})/);          // mmm/aa
+  let m=s.match(/([a-z]{3})\/?\s*(\d{2,4})/);
   if(m&&MESES_PT[m[1]]){let a=+m[2]; if(a<100)a+=2000; return {mes:MESES_PT[m[1]],ano:a};}
-  m=s.match(/(\d{4})-(\d{1,2})/);                       // aaaa-mm
+  m=s.match(/(\d{4})-(\d{1,2})/);
   if(m) return {mes:+m[2],ano:+m[1]};
-  m=s.match(/^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/);      // dd/mm/aaaa ou mm/aaaa
+  m=s.match(/^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/);
   if(m) return {mes:+m[1],ano:+m[2]};
-  m=s.match(/^\d{1,2}\/(\d{1,2})\/(\d{2})$/);           // dd/mm/aa
+  m=s.match(/^\d{1,2}\/(\d{1,2})\/(\d{2})$/);
   if(m) return {mes:+m[1],ano:2000+ +m[2]};
   return null;
 }
@@ -262,18 +258,13 @@ async function loadAll(){
     // ====== Saldo por pessoa (mês atual) ======
     const mesAtual = janela[atualIdx];
 
-    // acha a coluna do mês atual na aba Orçamento
-    let orcCol=-1;
-    if(orcRows.length>0){
-      orcRows[0].forEach((col,i)=>{ const mp=parseMes(col); if(mp&&mp.mes===mesAtual.mes&&mp.ano===mesAtual.ano) orcCol=i; });
-    }
-    let orcGabri=0, orcJu=0;
-    if(orcCol>=0){
-      orcRows.slice(1).forEach(row=>{
-        const p=pessoaConta(row[0]); const v=valorBR(row[orcCol]);
-        if(p==='gabri') orcGabri+=v; else if(p==='ju') orcJu+=v;
-      });
-    }
+    // Orçamento: linhas fixas (Gabri = H28:H30, Ju = H32:H33). A coluna varia por mês:
+    // H (índice 7) = jul/26, I = ago/26, J = set/26... calculado automaticamente.
+    const oc = 7 + (mesAtual.ano-2026)*12 + (mesAtual.mes-7);
+    const orcCel = (ri)=> (oc>=0 && orcRows[ri]!==undefined) ? valorBR(orcRows[ri][oc]) : 0;
+    const orcGabri = orcCel(27)+orcCel(28)+orcCel(29); // linhas 28,29,30
+    const orcJu    = orcCel(31)+orcCel(32);            // linhas 32,33
+    const semOrc   = (oc < 7);
 
     // gastos (saídas) do mês atual por pessoa
     let gastoGabri=0, gastoJu=0;
@@ -288,9 +279,9 @@ async function loadAll(){
     const dispGabri=orcGabri-gastoGabri, dispJu=orcJu-gastoJu;
     const elG=document.getElementById('saldo-gabri'), elJ=document.getElementById('saldo-ju');
     elG.textContent=fmtBRL(Math.abs(dispGabri)); elG.className='pessoa-valor '+(dispGabri>=0?'positivo':'negativo');
-    document.getElementById('label-gabri').textContent=(orcCol<0)?'sem orçamento':(dispGabri>=0?'disponível':'acima do orçamento');
+    document.getElementById('label-gabri').textContent=semOrc?'sem orçamento':(dispGabri>=0?'disponível':'acima do orçamento');
     elJ.textContent=fmtBRL(Math.abs(dispJu)); elJ.className='pessoa-valor '+(dispJu>=0?'positivo':'negativo');
-    document.getElementById('label-ju').textContent=(orcCol<0)?'sem orçamento':(dispJu>=0?'disponível':'acima do orçamento');
+    document.getElementById('label-ju').textContent=semOrc?'sem orçamento':(dispJu>=0?'disponível':'acima do orçamento');
 
   }catch(err){
     console.error(err);
