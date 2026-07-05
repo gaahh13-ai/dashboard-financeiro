@@ -31,23 +31,21 @@
   .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
   .legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
   .chart-wrap{position:relative;height:220px;}
-  .saldo-section{margin-bottom:20px;}
-  .saldo-card{background:var(--surface);border:1px solid rgba(79,142,247,0.25);border-radius:14px;padding:28px 32px;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
+  .saldo-section{margin-bottom:24px;}
+  .saldo-card{background:var(--surface);border:1px solid rgba(79,142,247,0.25);border-radius:14px;padding:24px 28px;position:relative;overflow:hidden;}
   .saldo-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple));border-radius:14px 14px 0 0;}
-  .saldo-card-title{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:20px;}
-  .saldo-pessoas{display:grid;grid-template-columns:1fr auto 1fr;gap:0;width:100%;max-width:500px;align-items:center;}
-  .pessoa-block{display:flex;flex-direction:column;align-items:center;padding:20px;}
-  .pessoa-block:first-child{background:var(--surface2);border-radius:12px 0 0 12px;border:1px solid var(--border);border-right:none;}
-  .pessoa-block:last-child{background:var(--surface2);border-radius:0 12px 12px 0;border:1px solid var(--border);border-left:none;}
-  .pessoa-divider{width:1px;height:60px;background:var(--border);}
-  .pessoa-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;margin-bottom:8px;}
+  .saldo-card-title{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:16px;}
+  .saldo-table{width:100%;max-width:620px;border-collapse:collapse;}
+  .saldo-table th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;padding:6px 14px;text-align:right;}
+  .saldo-table th:first-child{text-align:left;}
+  .saldo-table td{padding:14px 14px;border-top:1px solid var(--border);}
+  .pessoa-cel{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:500;color:var(--text);}
+  .pessoa-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;}
   .pessoa-avatar.gabri{background:rgba(79,142,247,0.2);color:var(--accent);}
   .pessoa-avatar.ju{background:rgba(167,139,250,0.2);color:var(--purple);}
-  .pessoa-nome{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;}
-  .pessoa-valor{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-1px;}
-  .pessoa-valor.positivo{color:var(--green);}
-  .pessoa-valor.negativo{color:var(--red);}
-  .pessoa-label{font-size:10px;color:var(--muted);margin-top:3px;}
+  .val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;text-align:right;letter-spacing:-0.5px;}
+  .val.positivo{color:var(--green);}
+  .val.negativo{color:var(--red);}
   .loading{display:flex;align-items:center;justify-content:center;height:220px;color:var(--muted);font-size:13px;gap:8px;}
   .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
@@ -70,6 +68,32 @@
   </div>
 </div>
 
+<!-- 1) Quanto ainda pode gastar (mês atual e seguinte) -->
+<div class="section-label">Quanto ainda pode gastar</div>
+<div class="saldo-section">
+  <div class="saldo-card">
+    <div class="saldo-card-title">Saldo disponível por pessoa</div>
+    <table class="saldo-table">
+      <thead>
+        <tr><th>Pessoa</th><th id="mes-atual-lbl">—</th><th id="mes-prox-lbl">—</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="pessoa-cel"><span class="pessoa-avatar gabri">G</span> Gabri</div></td>
+          <td class="val" id="g-atual">—</td>
+          <td class="val" id="g-prox">—</td>
+        </tr>
+        <tr>
+          <td><div class="pessoa-cel"><span class="pessoa-avatar ju">J</span> Ju</div></td>
+          <td class="val" id="j-atual">—</td>
+          <td class="val" id="j-prox">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 2) Gráficos -->
 <div class="section-label">Fluxo financeiro — 12 meses</div>
 <div class="charts-grid" style="margin-bottom:20px">
   <div class="chart-card">
@@ -108,28 +132,6 @@
   </div>
 </div>
 
-<div class="section-label">Saldo disponível no mês corrente</div>
-<div class="saldo-section">
-  <div class="saldo-card">
-    <div class="saldo-card-title">Quanto ainda pode gastar este mês</div>
-    <div class="saldo-pessoas">
-      <div class="pessoa-block">
-        <div class="pessoa-avatar gabri">G</div>
-        <div class="pessoa-nome">Gabri</div>
-        <div class="pessoa-valor positivo" id="saldo-gabri">—</div>
-        <div class="pessoa-label" id="label-gabri">calculando...</div>
-      </div>
-      <div class="pessoa-divider"></div>
-      <div class="pessoa-block">
-        <div class="pessoa-avatar ju">J</div>
-        <div class="pessoa-nome">Ju</div>
-        <div class="pessoa-valor positivo" id="saldo-ju">—</div>
-        <div class="pessoa-label" id="label-ju">calculando...</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 // ====== CONFIG ======
 const SHEET_ID = '1D7lMhfRGz6sNc9ZsDAzGav2aeEl4wo7e14PILR37if8';
@@ -141,7 +143,6 @@ const ABA_ORC  = 'Orçamento';
 // 7 Valor | 8 Conta/Forma | 9 Recorrência | 10 Parcela | 11 Origem | 12 Obs
 const COL = { comp:2, status:3, tipo:4, desc:5, cat:6, valor:7, conta:8 };
 
-// ====== Fetch CSV via gviz ======
 async function fetchSheet(sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const resp = await fetch(url);
@@ -156,8 +157,6 @@ function parseCSV(text){
     cols.push(cur); return cols.map(s=>s.replace(/^"|"$/g,'').trim());
   });
 }
-
-// ====== Helpers ======
 function semAcento(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function limpo(s){return String(s==null?'':s).replace(/"/g,'').trim();}
 function valorBR(s){
@@ -199,7 +198,6 @@ function buildWindow(){
   return meses;
 }
 
-// ====== Charts ======
 let chart1Instance, chart2Instance;
 const chartDefaults={
   responsive:true,maintainAspectRatio:false,
@@ -235,7 +233,26 @@ async function loadAll(){
     const gastos_total = gastos_r.map((v,i)=>v+gastos_p[i]);
     const saldo = entradas.map((v,i)=>v-gastos_total[i]);
 
-    // Gráfico 1
+    // ====== 1) Quanto ainda pode gastar — mês atual e seguinte (valores puros da aba Orçamento) ======
+    const mesAtual = janela[atualIdx];
+    const mesProx  = janela[atualIdx+1];
+    // Coluna do orçamento: H (índice 7) = jul/26, I = ago/26 ... (automático)
+    const ocAtual = 7 + (mesAtual.ano-2026)*12 + (mesAtual.mes-7);
+    const ocProx  = ocAtual + 1;
+    const cel = (ri, ci)=> (ci>=0 && orcRows[ri]!==undefined) ? valorBR(orcRows[ri][ci]) : 0;
+    // Linha 27 (índice 26) = Gabri | Linha 28 (índice 27) = Ju
+    const orcG_atual = cel(26, ocAtual), orcG_prox = cel(26, ocProx);
+    const orcJ_atual = cel(27, ocAtual), orcJ_prox = cel(27, ocProx);
+
+    document.getElementById('mes-atual-lbl').textContent = mesAtual.label;
+    document.getElementById('mes-prox-lbl').textContent  = mesProx.label;
+    const setVal = (id, v)=>{ const el=document.getElementById(id); el.textContent=fmtBRL(Math.abs(v)); el.className='val '+(v>=0?'positivo':'negativo'); };
+    setVal('g-atual', orcG_atual); // valor puro da célula (linha 27 Gabri)
+    setVal('g-prox',  orcG_prox);
+    setVal('j-atual', orcJ_atual); // valor puro da célula (linha 28 Ju)
+    setVal('j-prox',  orcJ_prox);
+
+    // ====== 2) Gráfico 1: Entrada / Gastos / Saldo ======
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
     if(chart1Instance) chart1Instance.destroy();
@@ -245,7 +262,6 @@ async function loadAll(){
       {label:'Saldo',data:saldo.map(v=>Math.max(v,0)),backgroundColor:'rgba(251,191,36,0.75)',borderRadius:4,borderSkipped:false},
     ]},options:{...chartDefaults,plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}}}});
 
-    // Gráfico 2
     document.getElementById('load2').style.display='none';
     const c2=document.getElementById('chart2'); c2.style.display='block';
     if(chart2Instance) chart2Instance.destroy();
@@ -254,34 +270,6 @@ async function loadAll(){
       {label:'Previsto',data:gastos_p,backgroundColor:'rgba(79,142,247,0.3)',borderColor:'rgba(79,142,247,0.6)',borderWidth:1,borderRadius:4,borderSkipped:false,stack:'gastos'},
       {label:'Saldo',data:saldo.map(v=>Math.max(v,0)),backgroundColor:'rgba(251,191,36,0.75)',borderRadius:4,borderSkipped:false,stack:'saldo'}
     ]},options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,stacked:true},y:{...chartDefaults.scales.y,stacked:false}},plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}}}});
-
-    // ====== Saldo por pessoa (mês atual) ======
-    const mesAtual = janela[atualIdx];
-
-    // Orçamento: linhas fixas (Gabri = H28:H30, Ju = H32:H33). A coluna varia por mês:
-    // H (índice 7) = jul/26, I = ago/26, J = set/26... calculado automaticamente.
-    const oc = 7 + (mesAtual.ano-2026)*12 + (mesAtual.mes-7);
-    const orcCel = (ri)=> (oc>=0 && orcRows[ri]!==undefined) ? valorBR(orcRows[ri][oc]) : 0;
-    const orcGabri = orcCel(27)+orcCel(28)+orcCel(29); // linhas 28,29,30
-    const orcJu    = orcCel(31)+orcCel(32);            // linhas 32,33
-    const semOrc   = (oc < 7);
-
-    // gastos (saídas) do mês atual por pessoa
-    let gastoGabri=0, gastoJu=0;
-    data.forEach(row=>{
-      const mp=parseMes(row[COL.comp]);
-      if(!mp||mp.mes!==mesAtual.mes||mp.ano!==mesAtual.ano) return;
-      if(semAcento(limpo(row[COL.tipo])).toLowerCase()!=='saida') return;
-      const p=pessoaConta(row[COL.conta]); const v=valorBR(row[COL.valor]);
-      if(p==='gabri') gastoGabri+=v; else if(p==='ju') gastoJu+=v;
-    });
-
-    const dispGabri=orcGabri-gastoGabri, dispJu=orcJu-gastoJu;
-    const elG=document.getElementById('saldo-gabri'), elJ=document.getElementById('saldo-ju');
-    elG.textContent=fmtBRL(Math.abs(dispGabri)); elG.className='pessoa-valor '+(dispGabri>=0?'positivo':'negativo');
-    document.getElementById('label-gabri').textContent=semOrc?'sem orçamento':(dispGabri>=0?'disponível':'acima do orçamento');
-    elJ.textContent=fmtBRL(Math.abs(dispJu)); elJ.className='pessoa-valor '+(dispJu>=0?'positivo':'negativo');
-    document.getElementById('label-ju').textContent=semOrc?'sem orçamento':(dispJu>=0?'disponível':'acima do orçamento');
 
   }catch(err){
     console.error(err);
