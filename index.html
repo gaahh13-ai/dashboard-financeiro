@@ -98,12 +98,12 @@
     <div class="chart-header">
       <div>
         <div class="chart-title">Entrada · Gastos · Saldo</div>
-        <div class="chart-sub">3 meses anteriores, mês atual e 8 seguintes</div>
+        <div class="chart-sub">Gastos já sem "Gastos Terceiros" · nº acima = entrada − gastos</div>
       </div>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--gasto)"></div>Gastos</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--saldo)"></div>Saldo</div>
+        <div class="legend-item">Saldo = nº acima</div>
       </div>
     </div>
     <div class="chart-wrap">
@@ -192,6 +192,27 @@ function buildWindow(){
 }
 
 let chart1Instance, chart2Instance;
+// Desenha o saldo do mês (entrada - gastos) acima das barras do gráfico 1
+const saldoLabelPlugin = {
+  id:'saldoLabel',
+  afterDatasetsDraw(chart, args, opts){
+    const saldos = (opts && opts.saldos) || [];
+    const ctx = chart.ctx;
+    const m0 = chart.getDatasetMeta(0), m1 = chart.getDatasetMeta(1);
+    ctx.save();
+    ctx.font='700 10px "JetBrains Mono", monospace';
+    ctx.textAlign='center';
+    saldos.forEach((v,i)=>{
+      const b0=m0.data[i], b1=m1.data[i];
+      if(!b0||!b1) return;
+      const x=(b0.x+b1.x)/2;
+      const yTop=Math.min(b0.y,b1.y)-6;
+      ctx.fillStyle = v>=0 ? '#34D399' : '#F87171';
+      ctx.fillText(fmtBRL(v), x, yTop);
+    });
+    ctx.restore();
+  }
+};
 const chartDefaults={
   responsive:true,maintainAspectRatio:false,
   plugins:{legend:{display:false},tooltip:{backgroundColor:'#1C2030',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,titleColor:'#E8EAF0',bodyColor:'#9CA3AF'}},
@@ -210,6 +231,7 @@ async function loadAll(){
     const entradas = janela.map(()=>0);
     const gastos_r = janela.map(()=>0);
     const gastos_p = janela.map(()=>0);
+    const gastos_terc = janela.map(()=>0); // categoria "Gastos Terceiros" (será reembolsado)
 
     data.forEach(row=>{
       const mp = parseMes(row[COL.comp]);
@@ -220,17 +242,20 @@ async function loadAll(){
       const tipo = semAcento(limpo(row[COL.tipo])).toLowerCase();
       const status = semAcento(limpo(row[COL.status])).toLowerCase();
       if(tipo==='entrada'){ entradas[idx]+=valor; }
-      else { if(status==='previsto') gastos_p[idx]+=valor; else gastos_r[idx]+=valor; }
+      else {
+        if(status==='previsto') gastos_p[idx]+=valor; else gastos_r[idx]+=valor;
+        if(semAcento(limpo(row[COL.cat])).toLowerCase()==='gastos terceiros') gastos_terc[idx]+=valor;
+      }
     });
 
     const gastos_total = gastos_r.map((v,i)=>v+gastos_p[i]);
-    const saldo = entradas.map((v,i)=>v-gastos_total[i]);
+    const gastos_ajust = gastos_total.map((v,i)=>v-gastos_terc[i]); // desconta Gastos Terceiros
+    const saldoMes = entradas.map((v,i)=>v-gastos_ajust[i]);        // entrada - gastos (pode ser negativo)
+    const saldo = entradas.map((v,i)=>v-gastos_total[i]);           // usado no gráfico 2
 
     // ====== Quanto ainda pode gastar — mês atual e seguinte (valores puros da aba Orçamento) ======
     const mesAtual = janela[atualIdx];
     const mesProx  = janela[atualIdx+1];
-    // O gviz ignora linhas vazias, então buscamos por RÓTULO (coluna A = "Gabri"/"Ju")
-    // e por MÊS (no cabeçalho da linha 1), em vez de índices fixos.
     const acharCol = (mes,ano)=>{ const h=orcRows[0]||[]; for(let i=0;i<h.length;i++){ const mp=parseMes(h[i]); if(mp&&mp.mes===mes&&mp.ano===ano) return i; } return -1; };
     const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
     const ocAtual = acharCol(mesAtual.mes, mesAtual.ano);
@@ -248,16 +273,25 @@ async function loadAll(){
     setVal('j-atual', orcJ_atual);
     setVal('j-prox',  orcJ_prox);
 
-    // ====== Gráfico 1 ======
+    // ====== Gráfico 1: Entrada / Gastos + rótulo de saldo ======
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
     if(chart1Instance) chart1Instance.destroy();
-    chart1Instance=new Chart(c1,{type:'bar',data:{labels,datasets:[
-      {label:'Entrada',data:entradas,backgroundColor:'rgba(52,211,153,0.75)',borderRadius:4,borderSkipped:false},
-      {label:'Gastos',data:gastos_total,backgroundColor:'rgba(248,113,113,0.75)',borderRadius:4,borderSkipped:false},
-      {label:'Saldo',data:saldo.map(v=>Math.max(v,0)),backgroundColor:'rgba(251,191,36,0.75)',borderRadius:4,borderSkipped:false},
-    ]},options:{...chartDefaults,plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}}}});
+    chart1Instance=new Chart(c1,{type:'bar',
+      plugins:[saldoLabelPlugin],
+      data:{labels,datasets:[
+        {label:'Entrada',data:entradas,backgroundColor:'rgba(52,211,153,0.75)',borderRadius:4,borderSkipped:false},
+        {label:'Gastos',data:gastos_ajust,backgroundColor:'rgba(248,113,113,0.75)',borderRadius:4,borderSkipped:false},
+      ]},
+      options:{...chartDefaults,
+        layout:{padding:{top:24}},
+        plugins:{...chartDefaults.plugins,
+          saldoLabel:{saldos:saldoMes},
+          tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}
+        }
+      }});
 
+    // ====== Gráfico 2: Realizado / Previsto / Saldo ======
     document.getElementById('load2').style.display='none';
     const c2=document.getElementById('chart2'); c2.style.display='block';
     if(chart2Instance) chart2Instance.destroy();
