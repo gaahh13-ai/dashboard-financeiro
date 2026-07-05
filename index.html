@@ -94,7 +94,7 @@
   <div class="chart-header">
     <div>
       <div class="chart-title">Entrada · Gastos (realizado + previsto)</div>
-      <div class="chart-sub">Previsto = Lançamentos + estimativa do Orçamento · nº acima = entrada − gastos</div>
+      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = entrada − gastos</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
@@ -164,13 +164,14 @@ function buildWindow(){
 }
 
 let chart1Instance;
+// Desenha o saldo do mês (entrada - gastos) acima das colunas
 const saldoLabelPlugin = {
   id:'saldoLabel',
   afterDatasetsDraw(chart, args, opts){
     const saldos = (opts && opts.saldos) || [];
     const ctx = chart.ctx;
-    const mEnt = chart.getDatasetMeta(0);
-    const mPrev = chart.getDatasetMeta(2);
+    const mEnt = chart.getDatasetMeta(0);   // Entrada
+    const mPrev = chart.getDatasetMeta(2);  // Previsto (topo da pilha de gastos)
     ctx.save();
     ctx.font='700 10px "JetBrains Mono", monospace';
     ctx.textAlign='center';
@@ -193,52 +194,34 @@ const chartDefaults={
 
 async function loadAll(){
   try{
-    const [lancRows, orcRows] = await Promise.all([ fetchSheet(ABA_LANC), fetchSheet(ABA_ORC).catch(()=>[]) ]);
-    const data = lancRows.slice(1).filter(r => limpo(r[COL.comp])!=='' || limpo(r[COL.valor])!=='');
+    const orcRows = await fetchSheet(ABA_ORC);
 
     const janela = buildWindow();
     const labels = janela.map(w=>w.label);
     const atualIdx = janela.findIndex(w=>w.atual);
-    const entradas = janela.map(()=>0);
-    const gastos_r = janela.map(()=>0);
-    const gastos_p = janela.map(()=>0);
-
-    data.forEach(row=>{
-      const mp = parseMes(row[COL.comp]);
-      if(!mp) return;
-      const idx = janela.findIndex(w=>w.mes===mp.mes && w.ano===mp.ano);
-      if(idx<0) return;
-      const valor = valorBR(row[COL.valor]);
-      const tipo = semAcento(limpo(row[COL.tipo])).toLowerCase();
-      const status = semAcento(limpo(row[COL.status])).toLowerCase();
-      if(tipo==='entrada'){ entradas[idx]+=valor; }
-      else { if(status==='previsto') gastos_p[idx]+=valor; else gastos_r[idx]+=valor; }
-    });
-
-    // Helpers da aba Orçamento (gviz ignora linhas vazias → buscar por rótulo/mês)
+    // ── Helpers da aba Orçamento (gviz ignora linhas vazias → buscar por rótulo/mês) ──
     const acharCol = (mes,ano)=>{ const h=orcRows[0]||[]; for(let i=0;i<h.length;i++){ const mp=parseMes(h[i]); if(mp&&mp.mes===mes&&mp.ano===ano) return i; } return -1; };
     const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
-    // Estimativa a somar no previsto = contas de SAÍDA da seção "Saldo para o mes" (exclui créditos)
-    const estimadoDoMes = (colIdx)=>{
-      if(colIdx<0) return 0;
-      let inSec=false, soma=0;
-      for(let i=0;i<orcRows.length;i++){
-        const lbl = semAcento(limpo((orcRows[i]||[])[0])).toLowerCase();
-        if(lbl==='saldo para o mes'){ inSec=true; continue; }
-        if(!inSec) continue;
-        if(lbl.indexOf('total')!==-1) break;
-        if(lbl===''||lbl.indexOf('credito')!==-1) continue;
-        soma += valorBR((orcRows[i]||[])[colIdx]);
-      }
-      return soma;
-    };
+    const valLinha = (nome,colIdx)=>{ const r=acharLinha(nome); return (r>=0 && colIdx>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][colIdx]) : 0; };
 
-    const estimado    = janela.map(w=> estimadoDoMes(acharCol(w.mes,w.ano)));
-    const previsto_tot = gastos_p.map((v,i)=> v + estimado[i]);
-    const gastos_tot   = gastos_r.map((v,i)=> v + previsto_tot[i]);
-    const saldoMes     = entradas.map((v,i)=> v - gastos_tot[i]);
+    // Tudo lido da aba Orçamento, sempre pela competência (linha 1) de cada coluna:
+    //   Previsto  = "Previsto" + "Previsto de orçamento do mes"   (linha 21 + 22)
+    //   Realizado = "Realizado" − "Gastos Terceiros"              (linha 23 − 24)
+    //   Entrada   = "Entrada estimada"                            (linha 29)
+    const entradas=[], gastos_r=[], previsto_tot=[], gastos_tot=[], saldoMes=[];
+    janela.forEach(w=>{
+      const c    = acharCol(w.mes,w.ano);
+      const prev = valLinha('Previsto',c) + valLinha('Previsto de orçamento do mes',c);
+      const real = valLinha('Realizado',c) - valLinha('Gastos Terceiros',c);
+      const ent  = valLinha('Entrada estimada',c);
+      entradas.push(ent);
+      gastos_r.push(real);          // barra vermelha forte
+      previsto_tot.push(prev);      // barra vermelha fraca
+      gastos_tot.push(real+prev);
+      saldoMes.push(ent-(real+prev)); // nº acima = entrada − gastos
+    });
 
-    // Quanto ainda pode gastar (valores puros: linhas "Gabri"/"Ju")
+    // ── Quanto ainda pode gastar (valores puros: linhas "Gabri"/"Ju") ──
     const mesAtual = janela[atualIdx];
     const mesProx  = janela[atualIdx+1];
     const ocAtual = acharCol(mesAtual.mes, mesAtual.ano);
@@ -253,7 +236,7 @@ async function loadAll(){
     setVal('j-atual', cel(rJ, ocAtual));
     setVal('j-prox',  cel(rJ, ocProx));
 
-    // Gráfico único
+    // ── Gráfico único ──
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
     if(chart1Instance) chart1Instance.destroy();
