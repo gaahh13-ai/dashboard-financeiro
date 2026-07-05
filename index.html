@@ -265,4 +265,15 @@ async function loadAll(){
       {label:'Realizado',data:gastos_r,backgroundColor:'rgba(79,142,247,0.85)',borderRadius:4,borderSkipped:false,stack:'gastos'},
       {label:'Previsto',data:gastos_p,backgroundColor:'rgba(79,142,247,0.3)',borderColor:'rgba(79,142,247,0.6)',borderWidth:1,borderRadius:4,borderSkipped:false,stack:'gastos'},
       {label:'Saldo',data:saldo.map(v=>Math.max(v,0)),backgroundColor:'rgba(251,191,36,0.75)',borderRadius:4,borderSkipped:false,stack:'saldo'}
-    ]},options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,stacked:true},y:{...chartDefaults.scales.y,stacked:false}},plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:c
+    ]},options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,stacked:true},y:{...chartDefaults.scales.y,stacked:false}},plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}}}});
+
+  }catch(err){
+    console.error(err);
+    document.getElementById('load1').innerHTML=`<div class="error-msg"><strong>Erro ao carregar dados</strong><span>Verifique se a planilha está pública (qualquer pessoa com o link)</span></div>`;
+    document.getElementById('load2').innerHTML=`<div class="error-msg"><strong>Erro ao carregar dados</strong><span>${err.message}</span></div>`;
+  }
+}
+loadAll();
+</script>
+</body>
+</html>
