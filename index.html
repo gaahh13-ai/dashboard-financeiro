@@ -68,7 +68,6 @@
   </div>
 </div>
 
-<!-- 1) Quanto ainda pode gastar (mês atual e seguinte) -->
 <div class="section-label">Quanto ainda pode gastar</div>
 <div class="saldo-section">
   <div class="saldo-card">
@@ -93,7 +92,6 @@
   </div>
 </div>
 
-<!-- 2) Gráficos -->
 <div class="section-label">Fluxo financeiro — 12 meses</div>
 <div class="charts-grid" style="margin-bottom:20px">
   <div class="chart-card">
@@ -133,14 +131,9 @@
 </div>
 
 <script>
-// ====== CONFIG ======
 const SHEET_ID = '1D7lMhfRGz6sNc9ZsDAzGav2aeEl4wo7e14PILR37if8';
 const ABA_LANC = 'Lançamentos';
 const ABA_ORC  = 'Orçamento';
-
-// Colunas da aba Lançamentos (0-based):
-// 0 ID | 1 Data | 2 Competência | 3 Status | 4 Tipo | 5 Descrição | 6 Categoria
-// 7 Valor | 8 Conta/Forma | 9 Recorrência | 10 Parcela | 11 Origem | 12 Obs
 const COL = { comp:2, status:3, tipo:4, desc:5, cat:6, valor:7, conta:8 };
 
 async function fetchSheet(sheetName) {
@@ -233,26 +226,29 @@ async function loadAll(){
     const gastos_total = gastos_r.map((v,i)=>v+gastos_p[i]);
     const saldo = entradas.map((v,i)=>v-gastos_total[i]);
 
-    // ====== 1) Quanto ainda pode gastar — mês atual e seguinte (valores puros da aba Orçamento) ======
+    // ====== Quanto ainda pode gastar — mês atual e seguinte (valores puros da aba Orçamento) ======
     const mesAtual = janela[atualIdx];
     const mesProx  = janela[atualIdx+1];
-    // Coluna do orçamento: H (índice 7) = jul/26, I = ago/26 ... (automático)
-    const ocAtual = 7 + (mesAtual.ano-2026)*12 + (mesAtual.mes-7);
-    const ocProx  = ocAtual + 1;
-    const cel = (ri, ci)=> (ci>=0 && orcRows[ri]!==undefined) ? valorBR(orcRows[ri][ci]) : 0;
-    // Linha 27 (índice 26) = Gabri | Linha 28 (índice 27) = Ju
-    const orcG_atual = cel(26, ocAtual), orcG_prox = cel(26, ocProx);
-    const orcJ_atual = cel(27, ocAtual), orcJ_prox = cel(27, ocProx);
+    // O gviz ignora linhas vazias, então buscamos por RÓTULO (coluna A = "Gabri"/"Ju")
+    // e por MÊS (no cabeçalho da linha 1), em vez de índices fixos.
+    const acharCol = (mes,ano)=>{ const h=orcRows[0]||[]; for(let i=0;i<h.length;i++){ const mp=parseMes(h[i]); if(mp&&mp.mes===mes&&mp.ano===ano) return i; } return -1; };
+    const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
+    const ocAtual = acharCol(mesAtual.mes, mesAtual.ano);
+    const ocProx  = acharCol(mesProx.mes,  mesProx.ano);
+    const rG = acharLinha('Gabri'), rJ = acharLinha('Ju');
+    const cel = (r,c)=> (r>=0 && c>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][c]) : 0;
+    const orcG_atual = cel(rG, ocAtual), orcG_prox = cel(rG, ocProx);
+    const orcJ_atual = cel(rJ, ocAtual), orcJ_prox = cel(rJ, ocProx);
 
     document.getElementById('mes-atual-lbl').textContent = mesAtual.label;
     document.getElementById('mes-prox-lbl').textContent  = mesProx.label;
     const setVal = (id, v)=>{ const el=document.getElementById(id); el.textContent=fmtBRL(Math.abs(v)); el.className='val '+(v>=0?'positivo':'negativo'); };
-    setVal('g-atual', orcG_atual); // valor puro da célula (linha 27 Gabri)
+    setVal('g-atual', orcG_atual);
     setVal('g-prox',  orcG_prox);
-    setVal('j-atual', orcJ_atual); // valor puro da célula (linha 28 Ju)
+    setVal('j-atual', orcJ_atual);
     setVal('j-prox',  orcJ_prox);
 
-    // ====== 2) Gráfico 1: Entrada / Gastos / Saldo ======
+    // ====== Gráfico 1 ======
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
     if(chart1Instance) chart1Instance.destroy();
@@ -269,15 +265,4 @@ async function loadAll(){
       {label:'Realizado',data:gastos_r,backgroundColor:'rgba(79,142,247,0.85)',borderRadius:4,borderSkipped:false,stack:'gastos'},
       {label:'Previsto',data:gastos_p,backgroundColor:'rgba(79,142,247,0.3)',borderColor:'rgba(79,142,247,0.6)',borderWidth:1,borderRadius:4,borderSkipped:false,stack:'gastos'},
       {label:'Saldo',data:saldo.map(v=>Math.max(v,0)),backgroundColor:'rgba(251,191,36,0.75)',borderRadius:4,borderSkipped:false,stack:'saldo'}
-    ]},options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,stacked:true},y:{...chartDefaults.scales.y,stacked:false}},plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}}}});
-
-  }catch(err){
-    console.error(err);
-    document.getElementById('load1').innerHTML=`<div class="error-msg"><strong>Erro ao carregar dados</strong><span>Verifique se a planilha está pública (qualquer pessoa com o link)</span></div>`;
-    document.getElementById('load2').innerHTML=`<div class="error-msg"><strong>Erro ao carregar dados</strong><span>${err.message}</span></div>`;
-  }
-}
-loadAll();
-</script>
-</body>
-</html>
+    ]},options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,stacked:true},y:{...chartDefaults.scales.y,stacked:false}},plugins:{...chartDefaults.plugins,tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:c
