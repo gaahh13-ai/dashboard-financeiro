@@ -50,6 +50,8 @@
   .error-msg strong{color:var(--red);font-size:14px;}
   .refresh-btn{background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);padding:5px 12px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.15s;}
   .refresh-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .cat-select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 12px;font-size:12px;font-family:'Inter',sans-serif;cursor:pointer;outline:none;max-width:240px;}
+  .cat-select:focus{border-color:var(--accent);}
 </style>
 </head>
 <body>
@@ -94,7 +96,7 @@
   <div class="chart-header">
     <div>
       <div class="chart-title">Entrada · Gastos (realizado + previsto)</div>
-      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto (linha 30)</div>
+      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
@@ -108,160 +110,20 @@
   </div>
 </div>
 
+<div class="section-label">Tendência por categoria</div>
+<div class="chart-card">
+  <div class="chart-header">
+    <div>
+      <div class="chart-title">Gasto por categoria — valor por mês</div>
+      <div class="chart-sub">Total lançado na categoria em cada competência</div>
+    </div>
+    <select id="cat-select" class="cat-select"></select>
+  </div>
+  <div class="chart-wrap">
+    <div class="loading" id="load2"><div class="spinner"></div> Carregando...</div>
+    <canvas id="chart2" style="display:none"></canvas>
+  </div>
+</div>
+
 <script>
-const SHEET_ID = '1D7lMhfRGz6sNc9ZsDAzGav2aeEl4wo7e14PILR37if8';
-const ABA_LANC = 'Lançamentos';
-const ABA_ORC  = 'Orçamento';
-const COL = { comp:2, status:3, tipo:4, desc:5, cat:6, valor:7, conta:8 };
-
-async function fetchSheet(sheetName) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Erro ao carregar ${sheetName}: ${resp.status}`);
-  return parseCSV(await resp.text());
-}
-function parseCSV(text){
-  return text.trim().split('\n').map(line=>{
-    const cols=[]; let cur='',q=false;
-    for(let i=0;i<line.length;i++){const c=line[i];
-      if(c==='"'){q=!q;} else if(c===','&&!q){cols.push(cur);cur='';} else {cur+=c;}}
-    cols.push(cur); return cols.map(s=>s.replace(/^"|"$/g,'').trim());
-  });
-}
-function semAcento(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-function limpo(s){return String(s==null?'':s).replace(/"/g,'').trim();}
-function valorBR(s){
-  s=limpo(s).replace(/r\$/i,'').replace(/\s/g,'');
-  if(!s||s==='-'||s==='–') return 0;
-  s=s.replace(/\./g,'').replace(',','.');
-  const n=parseFloat(s); return isNaN(n)?0:n;
-}
-const MESES_PT={jan:1,fev:2,mar:3,abr:4,mai:5,jun:6,jul:7,ago:8,set:9,out:10,nov:11,dez:12};
-function parseMes(str){
-  let s=semAcento(limpo(str)).toLowerCase().replace(/\./g,'');
-  if(!s) return null;
-  let m=s.match(/([a-z]{3})\/?\s*(\d{2,4})/);
-  if(m&&MESES_PT[m[1]]){let a=+m[2]; if(a<100)a+=2000; return {mes:MESES_PT[m[1]],ano:a};}
-  m=s.match(/(\d{4})-(\d{1,2})/);
-  if(m) return {mes:+m[2],ano:+m[1]};
-  m=s.match(/^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/);
-  if(m) return {mes:+m[1],ano:+m[2]};
-  m=s.match(/^\d{1,2}\/(\d{1,2})\/(\d{2})$/);
-  if(m) return {mes:+m[1],ano:2000+ +m[2]};
-  return null;
-}
-function fmtBRL(v){return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});}
-
-function buildWindow(){
-  const now=new Date(); const meses=[];
-  for(let i=-3;i<=8;i++){
-    let m=now.getMonth()+1+i, a=now.getFullYear();
-    while(m>12){m-=12;a++;} while(m<1){m+=12;a--;}
-    const nomes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    meses.push({mes:m,ano:a,label:`${nomes[m-1]}/${String(a).slice(2)}`,atual:i===0});
-  }
-  return meses;
-}
-
-let chart1Instance;
-// Desenha o saldo do mês (linha 30) acima das colunas
-const saldoLabelPlugin = {
-  id:'saldoLabel',
-  afterDatasetsDraw(chart, args, opts){
-    const saldos = (opts && opts.saldos) || [];
-    const ctx = chart.ctx;
-    const mEnt = chart.getDatasetMeta(0);   // Entrada
-    const mPrev = chart.getDatasetMeta(2);  // Previsto (topo da pilha de gastos)
-    ctx.save();
-    ctx.font='700 10px "JetBrains Mono", monospace';
-    ctx.textAlign='center';
-    saldos.forEach((v,i)=>{
-      const a=mEnt.data[i], b=mPrev.data[i];
-      if(!a||!b) return;
-      const x=(a.x+b.x)/2, y=Math.min(a.y,b.y)-6;
-      ctx.fillStyle = v>=0 ? '#34D399' : '#F87171';
-      ctx.fillText(fmtBRL(v), x, y);
-    });
-    ctx.restore();
-  }
-};
-const chartDefaults={
-  responsive:true,maintainAspectRatio:false,
-  plugins:{legend:{display:false},tooltip:{backgroundColor:'#1C2030',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,titleColor:'#E8EAF0',bodyColor:'#9CA3AF'}},
-  scales:{x:{stacked:true,grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#6B7280',font:{size:10}}},
-          y:{stacked:true,grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#6B7280',font:{size:10},callback:v=>fmtBRL(v)},beginAtZero:true}}
-};
-
-async function loadAll(){
-  try{
-    const orcRows = await fetchSheet(ABA_ORC);
-
-    const janela = buildWindow();
-    const labels = janela.map(w=>w.label);
-    const atualIdx = janela.findIndex(w=>w.atual);
-    // ── Helpers da aba Orçamento (gviz ignora linhas vazias → buscar por rótulo/mês) ──
-    const acharCol = (mes,ano)=>{ const h=orcRows[0]||[]; for(let i=0;i<h.length;i++){ const mp=parseMes(h[i]); if(mp&&mp.mes===mes&&mp.ano===ano) return i; } return -1; };
-    const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
-    const valLinha = (nome,colIdx)=>{ const r=acharLinha(nome); return (r>=0 && colIdx>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][colIdx]) : 0; };
-
-    // Tudo lido da aba Orçamento, sempre pela competência (linha 1) de cada coluna:
-    //   Previsto  = "Previsto" + "Previsto de orçamento do mes"   (linha 21 + 22)
-    //   Realizado = "Realizado" − "Gastos Terceiros"              (linha 23 − 24)
-    //   Entrada   = "Entrada estimada"                            (linha 29)
-    //   nº acima  = "Saldo Consolidado Previsto"                  (linha 30, lido direto)
-    const entradas=[], gastos_r=[], previsto_tot=[], gastos_tot=[], saldoMes=[];
-    janela.forEach(w=>{
-      const c    = acharCol(w.mes,w.ano);
-      const prev = valLinha('Previsto',c) + valLinha('Previsto de orçamento do mes',c);
-      const real = valLinha('Realizado',c) - valLinha('Gastos Terceiros',c);
-      const ent  = valLinha('Entrada estimada',c);
-      entradas.push(ent);
-      gastos_r.push(real);          // barra vermelha forte
-      previsto_tot.push(prev);      // barra vermelha fraca
-      gastos_tot.push(real+prev);
-      saldoMes.push(valLinha('Saldo Consolidado Previsto',c)); // linha 30, direto
-    });
-
-    // ── Quanto ainda pode gastar (valores puros: linhas "Gabri"/"Ju") ──
-    const mesAtual = janela[atualIdx];
-    const mesProx  = janela[atualIdx+1];
-    const ocAtual = acharCol(mesAtual.mes, mesAtual.ano);
-    const ocProx  = acharCol(mesProx.mes,  mesProx.ano);
-    const rG = acharLinha('Gabri'), rJ = acharLinha('Ju');
-    const cel = (r,c)=> (r>=0 && c>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][c]) : 0;
-    document.getElementById('mes-atual-lbl').textContent = mesAtual.label;
-    document.getElementById('mes-prox-lbl').textContent  = mesProx.label;
-    const setVal = (id, v)=>{ const el=document.getElementById(id); el.textContent=fmtBRL(Math.abs(v)); el.className='val '+(v>=0?'positivo':'negativo'); };
-    setVal('g-atual', cel(rG, ocAtual));
-    setVal('g-prox',  cel(rG, ocProx));
-    setVal('j-atual', cel(rJ, ocAtual));
-    setVal('j-prox',  cel(rJ, ocProx));
-
-    // ── Gráfico único ──
-    document.getElementById('load1').style.display='none';
-    const c1=document.getElementById('chart1'); c1.style.display='block';
-    if(chart1Instance) chart1Instance.destroy();
-    chart1Instance=new Chart(c1,{type:'bar',
-      plugins:[saldoLabelPlugin],
-      data:{labels,datasets:[
-        {label:'Entrada',  data:entradas,     backgroundColor:'rgba(52,211,153,0.8)',  borderRadius:4, borderSkipped:false, stack:'entrada'},
-        {label:'Realizado',data:gastos_r,     backgroundColor:'rgba(220,38,38,0.9)',   borderRadius:0, borderSkipped:false, stack:'gastos'},
-        {label:'Previsto', data:previsto_tot, backgroundColor:'rgba(248,113,113,0.45)',borderRadius:4, borderSkipped:false, stack:'gastos'},
-      ]},
-      options:{...chartDefaults,
-        layout:{padding:{top:26}},
-        plugins:{...chartDefaults.plugins,
-          saldoLabel:{saldos:saldoMes},
-          tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}
-        }
-      }});
-
-  }catch(err){
-    console.error(err);
-    document.getElementById('load1').innerHTML=`<div class="error-msg"><strong>Erro ao carregar dados</strong><span>${err.message}</span></div>`;
-  }
-}
-loadAll();
-</script>
-</body>
-</html>
+const SHEET_ID = '1D7lMhfRGz6sNc9ZsDAzGav2aeE
