@@ -94,7 +94,7 @@
   <div class="chart-header">
     <div>
       <div class="chart-title">Entrada · Gastos (realizado + previsto)</div>
-      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = entrada − gastos</div>
+      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
@@ -164,7 +164,7 @@ function buildWindow(){
 }
 
 let chart1Instance;
-// Desenha o saldo do mês (entrada - gastos) acima das colunas
+// Desenha o saldo do mês (linha 30) acima das colunas
 const saldoLabelPlugin = {
   id:'saldoLabel',
   afterDatasetsDraw(chart, args, opts){
@@ -208,6 +208,7 @@ async function loadAll(){
     //   Previsto  = "Previsto" + "Previsto de orçamento do mes"   (linha 21 + 22)
     //   Realizado = "Realizado" − "Gastos Terceiros"              (linha 23 − 24)
     //   Entrada   = "Entrada estimada"                            (linha 29)
+    //   nº acima  = "Saldo Consolidado Previsto"                  (linha 30, lido direto)
     const entradas=[], gastos_r=[], previsto_tot=[], gastos_tot=[], saldoMes=[];
     janela.forEach(w=>{
       const c    = acharCol(w.mes,w.ano);
@@ -218,7 +219,7 @@ async function loadAll(){
       gastos_r.push(real);          // barra vermelha forte
       previsto_tot.push(prev);      // barra vermelha fraca
       gastos_tot.push(real+prev);
-      saldoMes.push(ent-(real+prev)); // nº acima = entrada − gastos
+      saldoMes.push(valLinha('Saldo Consolidado Previsto',c)); // linha 30, direto
     });
 
     // ── Quanto ainda pode gastar (valores puros: linhas "Gabri"/"Ju") ──
