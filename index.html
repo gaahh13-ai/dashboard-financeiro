@@ -147,6 +147,8 @@ function parseCSV(text){
 }
 function semAcento(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function limpo(s){return String(s==null?'':s).replace(/"/g,'').trim();}
+function catChave(s){return semAcento(limpo(s)).toLowerCase().replace(/\s+/g,' ');}
+function catRotulo(s){const t=limpo(s).toLowerCase().replace(/\s+/g,' ');return t.charAt(0).toUpperCase()+t.slice(1);}
 function valorBR(s){
   s=limpo(s).replace(/r\$/i,'').replace(/\s/g,'');
   if(!s||s==='-'||s==='–') return 0;
@@ -209,32 +211,34 @@ const chartDefaults={
 };
 
 let chart2Instance;
-let CAT = { labels:[], porCat:{} };
+let CAT = { labels:[], porCat:{}, rotulos:{} };
 const NOMES_MES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 function construirCategorias(lancRows){
   const data = (lancRows||[]).slice(1);
   let minK=Infinity, maxK=-Infinity;
-  const linhas=[]; const cats=new Set();
+  const linhas=[]; const cats=new Map();
   data.forEach(r=>{
-    const cat=limpo(r[COL.cat]); if(!cat) return;
+    const bruto=limpo(r[COL.cat]); if(!bruto) return;
+    const cat=catChave(bruto);
     const mp=parseMes(r[COL.comp]); if(!mp) return;
     const k=mp.ano*12+mp.mes;
     linhas.push({k,cat,val:valorBR(r[COL.valor])});
-    cats.add(cat);
+    if(!cats.has(cat)) cats.set(cat,catRotulo(bruto));
     if(k<minK)minK=k; if(k>maxK)maxK=k;
   });
   const sel=document.getElementById('cat-select');
   sel.innerHTML='';
-  if(!isFinite(minK)){ CAT={labels:[],porCat:{}}; return; }
+  if(!isFinite(minK)){ CAT={labels:[],porCat:{},rotulos:{}}; return; }
   const keys=[], labels=[];
   for(let k=minK;k<=maxK;k++){ keys.push(k); const ano=Math.floor((k-1)/12); const mes=k-ano*12; labels.push(`${NOMES_MES[mes-1]}/${String(ano).slice(2)}`); }
   const idx={}; keys.forEach((k,i)=>idx[k]=i);
-  const porCat={}; cats.forEach(c=>porCat[c]=keys.map(()=>0));
+  const porCat={}, rotulos={};
+  cats.forEach((rot,c)=>{ porCat[c]=keys.map(()=>0); rotulos[c]=rot; });
   linhas.forEach(l=>{ porCat[l.cat][idx[l.k]] += l.val; });
-  CAT={labels,porCat};
-  [...cats].sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(c=>{
-    const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o);
+  CAT={labels,porCat,rotulos};
+  [...cats.entries()].sort((a,b)=>a[1].localeCompare(b[1],'pt-BR')).forEach(([c,rot])=>{
+    const o=document.createElement('option'); o.value=c; o.textContent=rot; sel.appendChild(o);
   });
   sel.onchange=()=>renderCatChart(sel.value);
 }
@@ -247,7 +251,7 @@ function renderCatChart(cat){
   if(chart2Instance) chart2Instance.destroy();
   chart2Instance=new Chart(cv,{type:'line',
     data:{labels:CAT.labels,datasets:[{
-      label:cat, data:dados,
+      label:(CAT.rotulos&&CAT.rotulos[cat])||cat, data:dados,
       borderColor:'#4F8EF7', backgroundColor:'rgba(79,142,247,0.12)',
       borderWidth:2, pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#4F8EF7',
       tension:0.25, fill:true
