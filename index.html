@@ -32,7 +32,7 @@
   .saldo-card{background:var(--surface);border:1px solid rgba(79,142,247,0.25);border-radius:14px;padding:24px 28px;position:relative;overflow:hidden;}
   .saldo-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple));border-radius:14px 14px 0 0;}
   .saldo-card-title{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:16px;}
-  .saldo-table{width:100%;max-width:620px;border-collapse:collapse;}
+  .saldo-table{width:100%;max-width:800px;border-collapse:collapse;}
   .saldo-table th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;padding:6px 14px;text-align:right;}
   .saldo-table th:first-child{text-align:left;}
   .saldo-table td{padding:14px 14px;border-top:1px solid var(--border);}
@@ -73,18 +73,20 @@
     <div class="saldo-card-title">Saldo disponível por pessoa</div>
     <table class="saldo-table">
       <thead>
-        <tr><th>Pessoa</th><th id="mes-atual-lbl">—</th><th id="mes-prox-lbl">—</th></tr>
+        <tr><th>Pessoa</th><th id="mes-1-lbl">—</th><th id="mes-2-lbl">—</th><th id="mes-3-lbl">—</th></tr>
       </thead>
       <tbody>
         <tr>
           <td><div class="pessoa-cel"><span class="pessoa-avatar gabri">G</span> Gabri</div></td>
-          <td class="val" id="g-atual">—</td>
-          <td class="val" id="g-prox">—</td>
+          <td class="val" id="g-m1">—</td>
+          <td class="val" id="g-m2">—</td>
+          <td class="val" id="g-m3">—</td>
         </tr>
         <tr>
           <td><div class="pessoa-cel"><span class="pessoa-avatar ju">J</span> Ju</div></td>
-          <td class="val" id="j-atual">—</td>
-          <td class="val" id="j-prox">—</td>
+          <td class="val" id="j-m1">—</td>
+          <td class="val" id="j-m2">—</td>
+          <td class="val" id="j-m3">—</td>
         </tr>
       </tbody>
     </table>
@@ -288,19 +290,19 @@ async function loadAll(){
       saldoMes.push(valLinha('Saldo Consolidado Previsto',c));
     });
 
-    const mesAtual = janela[atualIdx];
-    const mesProx  = janela[atualIdx+1];
-    const ocAtual = acharCol(mesAtual.mes, mesAtual.ano);
-    const ocProx  = acharCol(mesProx.mes,  mesProx.ano);
+    // ── Saldo por pessoa: mês corrente + 2 meses seguintes ──
+    // A janela é recalculada a cada carregamento a partir de new Date(),
+    // então quando o mês corrente vira, as 3 colunas avançam sozinhas.
     const rG = acharLinha('Gabri'), rJ = acharLinha('Ju');
     const cel = (r,c)=> (r>=0 && c>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][c]) : 0;
-    document.getElementById('mes-atual-lbl').textContent = mesAtual.label;
-    document.getElementById('mes-prox-lbl').textContent  = mesProx.label;
     const setVal = (id, v)=>{ const el=document.getElementById(id); el.textContent=fmtBRL(Math.abs(v)); el.className='val '+(v>=0?'positivo':'negativo'); };
-    setVal('g-atual', cel(rG, ocAtual));
-    setVal('g-prox',  cel(rG, ocProx));
-    setVal('j-atual', cel(rJ, ocAtual));
-    setVal('j-prox',  cel(rJ, ocProx));
+    for(let n=0; n<3; n++){
+      const mes = janela[atualIdx+n];
+      const col = mes ? acharCol(mes.mes, mes.ano) : -1;
+      document.getElementById(`mes-${n+1}-lbl`).textContent = mes ? mes.label : '—';
+      setVal(`g-m${n+1}`, cel(rG, col));
+      setVal(`j-m${n+1}`, cel(rJ, col));
+    }
 
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
