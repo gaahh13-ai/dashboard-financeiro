@@ -98,7 +98,7 @@
   <div class="chart-header">
     <div>
       <div class="chart-title">Entrada · Gastos (realizado + previsto)</div>
-      <div class="chart-sub">Previsto = Previsto + estimativa do mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto</div>
+      <div class="chart-sub">Previsto = lançamentos ainda com status “Previsto” no mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
@@ -173,6 +173,24 @@ function parseMes(str){
 }
 function fmtBRL(v){return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});}
 
+// Soma dos lancamentos da aba Lancamentos que AINDA estao com Status "Previsto"
+// (coluna D), agrupados por competencia. So entram Tipo = "Saida", pois a serie e de gastos.
+function mapaPrevistoPorMes(lancRows){
+  const mapa = {};
+  (lancRows||[]).slice(1).forEach(r=>{
+    if(!r) return;
+    const st = semAcento(limpo(r[COL.status])).toLowerCase();
+    if(st !== 'previsto') return;
+    const tp = semAcento(limpo(r[COL.tipo])).toLowerCase();
+    if(tp !== 'saida') return;
+    const mp = parseMes(r[COL.comp]);
+    if(!mp) return;
+    const k = mp.ano*12 + mp.mes;
+    mapa[k] = (mapa[k]||0) + valorBR(r[COL.valor]);
+  });
+  return mapa;
+}
+
 function buildWindow(){
   const now=new Date(); const meses=[];
   for(let i=-3;i<=8;i++){
@@ -190,15 +208,29 @@ const saldoLabelPlugin = {
   afterDatasetsDraw(chart, args, opts){
     const saldos = (opts && opts.saldos) || [];
     const ctx = chart.ctx;
-    const mEnt = chart.getDatasetMeta(0);
-    const mPrev = chart.getDatasetMeta(2);
+    // Considera TODAS as series visiveis do grupo (Entrada, Realizado e Previsto)
+    // e usa min(y, base) para achar o pixel mais alto mesmo quando a barra e negativa.
+    const metas = chart.data.datasets
+      .map((d,i)=> chart.isDatasetVisible(i) ? chart.getDatasetMeta(i) : null)
+      .filter(Boolean);
     ctx.save();
     ctx.font='700 10px "JetBrains Mono", monospace';
     ctx.textAlign='center';
+    ctx.textBaseline='bottom';
     saldos.forEach((v,i)=>{
-      const a=mEnt.data[i], b=mPrev.data[i];
-      if(!a||!b) return;
-      const x=(a.x+b.x)/2, y=Math.min(a.y,b.y)-6;
+      let topo=Infinity, xMin=Infinity, xMax=-Infinity;
+      metas.forEach(m=>{
+        const el = m.data && m.data[i];
+        if(!el) return;
+        const base = (el.base===undefined || el.base===null) ? el.y : el.base;
+        const topoEl = Math.min(el.y, base);
+        if(topoEl < topo) topo = topoEl;
+        if(el.x < xMin) xMin = el.x;
+        if(el.x > xMax) xMax = el.x;
+      });
+      if(!isFinite(topo)) return;
+      const x = (xMin + xMax)/2;
+      const y = Math.max(topo - 6, chart.chartArea.top + 10);
       ctx.fillStyle = v>=0 ? '#34D399' : '#F87171';
       ctx.fillText(fmtBRL(v), x, y);
     });
@@ -277,10 +309,12 @@ async function loadAll(){
     const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
     const valLinha = (nome,colIdx)=>{ const r=acharLinha(nome); return (r>=0 && colIdx>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][colIdx]) : 0; };
 
+    const previstoPorMes = mapaPrevistoPorMes(lancRows);
+
     const entradas=[], gastos_r=[], previsto_tot=[], gastos_tot=[], saldoMes=[];
     janela.forEach(w=>{
       const c    = acharCol(w.mes,w.ano);
-      const prev = valLinha('Previsto',c) + valLinha('Previsto de orçamento do mes',c);
+      const prev = previstoPorMes[w.ano*12 + w.mes] || 0;
       const real = valLinha('Realizado',c) - valLinha('Gastos Terceiros',c);
       const ent  = valLinha('Entrada estimada',c);
       entradas.push(ent);
