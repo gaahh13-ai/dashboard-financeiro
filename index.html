@@ -32,6 +32,8 @@
   .saldo-card{background:var(--surface);border:1px solid rgba(79,142,247,0.25);border-radius:14px;padding:24px 28px;position:relative;overflow:hidden;}
   .saldo-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple));border-radius:14px 14px 0 0;}
   .saldo-card-title{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:16px;}
+  .saldo-card-title b{color:var(--muted);font-weight:600;}
+  .saldo-card-title .tag{color:var(--purple);font-weight:600;text-transform:none;letter-spacing:0;}
   .saldo-table{width:100%;max-width:800px;border-collapse:collapse;}
   .saldo-table th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;padding:6px 14px;text-align:right;}
   .saldo-table th:first-child{text-align:left;}
@@ -40,7 +42,7 @@
   .pessoa-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;}
   .pessoa-avatar.gabri{background:rgba(79,142,247,0.2);color:var(--accent);}
   .pessoa-avatar.ju{background:rgba(167,139,250,0.2);color:var(--purple);}
-  .val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;text-align:right;letter-spacing:-0.5px;}
+  .val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;text-align:right;letter-spacing:-0.5px;color:var(--muted);}
   .val.positivo{color:var(--green);}
   .val.negativo{color:var(--red);}
   .loading{display:flex;align-items:center;justify-content:center;height:320px;color:var(--muted);font-size:13px;gap:8px;}
@@ -70,7 +72,7 @@
 <div class="section-label">Quanto ainda pode gastar</div>
 <div class="saldo-section">
   <div class="saldo-card">
-    <div class="saldo-card-title">Saldo disponível por pessoa</div>
+    <div class="saldo-card-title">Saldo disponível por pessoa · <span class="tag">em breve (budget a definir)</span></div>
     <table class="saldo-table">
       <thead>
         <tr><th>Pessoa</th><th id="mes-1-lbl">—</th><th id="mes-2-lbl">—</th><th id="mes-3-lbl">—</th></tr>
@@ -98,7 +100,7 @@
   <div class="chart-header">
     <div>
       <div class="chart-title">Entrada · Gastos (realizado + previsto)</div>
-      <div class="chart-sub">Previsto = lançamentos ainda com status “Previsto” no mês · Realizado = Realizado − Gastos Terceiros · nº acima = Saldo Consolidado Previsto</div>
+      <div class="chart-sub">Direto da aba Lançamentos · nº acima = Entradas − (Realizado + Previsto)</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--entrada)"></div>Entrada</div>
@@ -130,7 +132,7 @@
 <script>
 const SHEET_ID = '1D7lMhfRGz6sNc9ZsDAzGav2aeEl4wo7e14PILR37if8';
 const ABA_LANC = 'Lançamentos';
-const ABA_ORC  = 'Orçamento';
+// Colunas da aba Lançamentos (0-based): C=Competencia, D=Status, E=Tipo, F=Descricao, G=Categoria, H=Valor, I=Conta/Forma
 const COL = { comp:2, status:3, tipo:4, desc:5, cat:6, valor:7, conta:8 };
 
 async function fetchSheet(sheetName) {
@@ -147,7 +149,7 @@ function parseCSV(text){
     cols.push(cur); return cols.map(s=>s.replace(/^"|"$/g,'').trim());
   });
 }
-function semAcento(s){return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function semAcento(s){return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'');}
 function limpo(s){return String(s==null?'':s).replace(/"/g,'').trim();}
 function catChave(s){return semAcento(limpo(s)).toLowerCase().replace(/\s+/g,' ');}
 function catRotulo(s){const t=limpo(s).toLowerCase().replace(/\s+/g,' ');return t.charAt(0).toUpperCase()+t.slice(1);}
@@ -171,25 +173,9 @@ function parseMes(str){
   if(m) return {mes:+m[1],ano:2000+ +m[2]};
   return null;
 }
+function tipoDe(str){ const t=semAcento(limpo(str)).toLowerCase(); if(t.indexOf('entrada')!==-1) return 'entrada'; if(t.indexOf('saida')!==-1) return 'saida'; return ''; }
+function statusDe(str){ const t=semAcento(limpo(str)).toLowerCase(); return t.indexOf('realizado')!==-1 ? 'realizado' : 'previsto'; }
 function fmtBRL(v){return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});}
-
-// Soma dos lancamentos da aba Lancamentos que AINDA estao com Status "Previsto"
-// (coluna D), agrupados por competencia. So entram Tipo = "Saida", pois a serie e de gastos.
-function mapaPrevistoPorMes(lancRows){
-  const mapa = {};
-  (lancRows||[]).slice(1).forEach(r=>{
-    if(!r) return;
-    const st = semAcento(limpo(r[COL.status])).toLowerCase();
-    if(st !== 'previsto') return;
-    const tp = semAcento(limpo(r[COL.tipo])).toLowerCase();
-    if(tp !== 'saida') return;
-    const mp = parseMes(r[COL.comp]);
-    if(!mp) return;
-    const k = mp.ano*12 + mp.mes;
-    mapa[k] = (mapa[k]||0) + valorBR(r[COL.valor]);
-  });
-  return mapa;
-}
 
 function buildWindow(){
   const now=new Date(); const meses=[];
@@ -208,29 +194,15 @@ const saldoLabelPlugin = {
   afterDatasetsDraw(chart, args, opts){
     const saldos = (opts && opts.saldos) || [];
     const ctx = chart.ctx;
-    // Considera TODAS as series visiveis do grupo (Entrada, Realizado e Previsto)
-    // e usa min(y, base) para achar o pixel mais alto mesmo quando a barra e negativa.
-    const metas = chart.data.datasets
-      .map((d,i)=> chart.isDatasetVisible(i) ? chart.getDatasetMeta(i) : null)
-      .filter(Boolean);
+    const mEnt = chart.getDatasetMeta(0);
+    const mPrev = chart.getDatasetMeta(2);
     ctx.save();
     ctx.font='700 10px "JetBrains Mono", monospace';
     ctx.textAlign='center';
-    ctx.textBaseline='bottom';
     saldos.forEach((v,i)=>{
-      let topo=Infinity, xMin=Infinity, xMax=-Infinity;
-      metas.forEach(m=>{
-        const el = m.data && m.data[i];
-        if(!el) return;
-        const base = (el.base===undefined || el.base===null) ? el.y : el.base;
-        const topoEl = Math.min(el.y, base);
-        if(topoEl < topo) topo = topoEl;
-        if(el.x < xMin) xMin = el.x;
-        if(el.x > xMax) xMax = el.x;
-      });
-      if(!isFinite(topo)) return;
-      const x = (xMin + xMax)/2;
-      const y = Math.max(topo - 6, chart.chartArea.top + 10);
+      const a=mEnt.data[i], b=mPrev.data[i];
+      if(!a||!b) return;
+      const x=(a.x+b.x)/2, y=Math.min(a.y,b.y)-6;
       ctx.fillStyle = v>=0 ? '#34D399' : '#F87171';
       ctx.fillText(fmtBRL(v), x, y);
     });
@@ -300,58 +272,53 @@ function renderCatChart(cat){
 
 async function loadAll(){
   try{
-    const [orcRows, lancRows] = await Promise.all([ fetchSheet(ABA_ORC), fetchSheet(ABA_LANC).catch(()=>[]) ]);
+    const lancRows = await fetchSheet(ABA_LANC);
 
     const janela = buildWindow();
     const labels = janela.map(w=>w.label);
     const atualIdx = janela.findIndex(w=>w.atual);
-    const acharCol = (mes,ano)=>{ const h=orcRows[0]||[]; for(let i=0;i<h.length;i++){ const mp=parseMes(h[i]); if(mp&&mp.mes===mes&&mp.ano===ano) return i; } return -1; };
-    const acharLinha = (nome)=>{ const alvo=semAcento(nome).toLowerCase(); for(let i=0;i<orcRows.length;i++){ if(semAcento(limpo((orcRows[i]||[])[0])).toLowerCase()===alvo) return i; } return -1; };
-    const valLinha = (nome,colIdx)=>{ const r=acharLinha(nome); return (r>=0 && colIdx>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][colIdx]) : 0; };
+    const idxMes = {}; janela.forEach((w,i)=>{ idxMes[w.ano*12+w.mes]=i; });
 
-    const previstoPorMes = mapaPrevistoPorMes(lancRows);
+    // ── Gráfico de barras direto de Lançamentos ──
+    const entradas   = janela.map(()=>0); // verde = Tipo "Entrada"
+    const realizados = janela.map(()=>0); // vermelho sólido = Saída + Status "Realizado"
+    const previstos  = janela.map(()=>0); // vermelho transparente = Saída + Status "Previsto"
 
-    const entradas=[], gastos_r=[], previsto_tot=[], gastos_tot=[], saldoMes=[];
-    janela.forEach(w=>{
-      const c    = acharCol(w.mes,w.ano);
-      const prev = previstoPorMes[w.ano*12 + w.mes] || 0;
-      const real = valLinha('Realizado',c) - valLinha('Gastos Terceiros',c);
-      const ent  = valLinha('Entrada estimada',c);
-      entradas.push(ent);
-      gastos_r.push(real);
-      previsto_tot.push(prev);
-      gastos_tot.push(real+prev);
-      saldoMes.push(valLinha('Saldo Consolidado Previsto',c));
+    (lancRows||[]).slice(1).forEach(r=>{
+      const mp = parseMes(r[COL.comp]); if(!mp) return;
+      const i = idxMes[mp.ano*12+mp.mes]; if(i===undefined) return;
+      const val = valorBR(r[COL.valor]); if(!val) return;
+      const tipo = tipoDe(r[COL.tipo]);
+      if(tipo==='entrada'){ entradas[i]+=val; }
+      else if(tipo==='saida'){
+        if(statusDe(r[COL.status])==='realizado') realizados[i]+=val; else previstos[i]+=val;
+      }
     });
+    // nº acima das barras = entradas − (realizado + previsto)
+    const saldo = entradas.map((e,i)=> e - (realizados[i]+previstos[i]));
 
-    // ── Saldo por pessoa: mês corrente + 2 meses seguintes ──
-    // A janela é recalculada a cada carregamento a partir de new Date(),
-    // então quando o mês corrente vira, as 3 colunas avançam sozinhas.
-    const rG = acharLinha('Gabri'), rJ = acharLinha('Ju');
-    const cel = (r,c)=> (r>=0 && c>=0 && orcRows[r]!==undefined) ? valorBR(orcRows[r][c]) : 0;
-    const setVal = (id, v)=>{ const el=document.getElementById(id); el.textContent=fmtBRL(Math.abs(v)); el.className='val '+(v>=0?'positivo':'negativo'); };
-    for(let n=0; n<3; n++){
+    // ── Saldo por pessoa — zerado por enquanto (budget a definir) ──
+    for(let n=0;n<3;n++){
       const mes = janela[atualIdx+n];
-      const col = mes ? acharCol(mes.mes, mes.ano) : -1;
       document.getElementById(`mes-${n+1}-lbl`).textContent = mes ? mes.label : '—';
-      setVal(`g-m${n+1}`, cel(rG, col));
-      setVal(`j-m${n+1}`, cel(rJ, col));
+      ['g','j'].forEach(p=>{ const el=document.getElementById(`${p}-m${n+1}`); el.textContent=fmtBRL(0); el.className='val'; });
     }
 
+    // ── Render gráfico de barras ──
     document.getElementById('load1').style.display='none';
     const c1=document.getElementById('chart1'); c1.style.display='block';
     if(chart1Instance) chart1Instance.destroy();
     chart1Instance=new Chart(c1,{type:'bar',
       plugins:[saldoLabelPlugin],
       data:{labels,datasets:[
-        {label:'Entrada',  data:entradas,     backgroundColor:'rgba(52,211,153,0.8)',  borderRadius:4, borderSkipped:false, stack:'entrada'},
-        {label:'Realizado',data:gastos_r,     backgroundColor:'rgba(220,38,38,0.9)',   borderRadius:0, borderSkipped:false, stack:'gastos'},
-        {label:'Previsto', data:previsto_tot, backgroundColor:'rgba(248,113,113,0.45)',borderRadius:4, borderSkipped:false, stack:'gastos'},
+        {label:'Entrada',  data:entradas,   backgroundColor:'rgba(52,211,153,0.8)',  borderRadius:4, borderSkipped:false, stack:'entrada'},
+        {label:'Realizado',data:realizados, backgroundColor:'rgba(220,38,38,0.9)',   borderRadius:0, borderSkipped:false, stack:'gastos'},
+        {label:'Previsto', data:previstos,  backgroundColor:'rgba(248,113,113,0.45)',borderRadius:4, borderSkipped:false, stack:'gastos'},
       ]},
       options:{...chartDefaults,
         layout:{padding:{top:26}},
         plugins:{...chartDefaults.plugins,
-          saldoLabel:{saldos:saldoMes},
+          saldoLabel:{saldos:saldo},
           tooltip:{...chartDefaults.plugins.tooltip,callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmtBRL(ctx.raw)}`}}
         }
       }});
